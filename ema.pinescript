@@ -11,7 +11,7 @@ plot(outLow, title="EMA Low", color=color.red, offset=offset)
 
 // Volume EMA21 calculation (for signal logic)
 volEmaLen = input.int(21, "Volume EMA Length", minval=1, display = display.data_window)
-volEma = ta.ema(volume, volEmaLen)
+volEma = ta.sma(volume, volEmaLen)
 volAboveEma = volume > volEma
 
 // Position State Tracking
@@ -93,13 +93,13 @@ fill(bbUpperBandLow, bbLowerBandLow, color= isBB ? color.new(color.fuchsia, 90) 
 
 // Plot 4 Distinct Position Signals
 // 1. OPEN BUY - Green, below bar
-plotshape(openBuyCondition, title="Open Buy", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.normal, text="BUY")
+plotshape(openBuyCondition, title="Open Buy", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.small, text="BUY")
 
 // 2. CLOSE BUY - Blue, above bar
-plotshape(closeBuyCondition, title="Close Buy", location=location.abovebar, color=color.blue, style=shape.xcross, size=size.normal, text="CLOSE BUY")
+plotshape(closeBuyCondition, title="Close Buy", location=location.abovebar, color=color.blue, style=shape.xcross, size=size.small, text="CLOSE BUY")
 
 // 3. OPEN SELL - Red, below bar
-plotshape(openSellCondition, title="Open Sell", location=location.belowbar, color=color.red, style=shape.triangledown, size=size.normal, text="SELL")
+plotshape(openSellCondition, title="Open Sell", location=location.belowbar, color=color.red, style=shape.triangledown, size=size.small, text="SELL")
 
 // 4. CLOSE SELL - Orange, above bar
-plotshape(closeSellCondition, title="Close Sell", location=location.abovebar, color=color.orange, style=shape.xcross, size=size.normal, text="CLOSE SELL")
+plotshape(closeSellCondition, title="Close Sell", location=location.abovebar, color=color.orange, style=shape.xcross, size=size.small, text="CLOSE SELL")
