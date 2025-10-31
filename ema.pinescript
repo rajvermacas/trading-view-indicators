@@ -38,17 +38,17 @@ trendChangedToUptrend = not upTrend[1] and upTrend
 trendChangedToDowntrend = upTrend[1] and not upTrend
 
 // State Machine Signal Logic - 4 Distinct Scenarios
-// 1. OPEN BUY: Uptrend + High Volume + Green Candle + Above EMA High + No Position
-openBuyCondition = upTrend and volAboveEma and greenCandle and aboveEMAHigh and not inBuyPosition and not inSellPosition
+// 1. OPEN BUY: Uptrend + High Volume + Green Candle + Above EMA High + No Current Position (using lookahead)
+openBuyCondition = upTrend and volAboveEma and greenCandle and aboveEMAHigh and not (inBuyPosition[1] and not trendChangedToDowntrend) and not (inSellPosition[1] and not trendChangedToUptrend)
 
 // 2. CLOSE BUY: Trend Changes to Downtrend + Currently in Buy Position
-closeBuyCondition = trendChangedToDowntrend and inBuyPosition
+closeBuyCondition = trendChangedToDowntrend and inBuyPosition[1]
 
-// 3. OPEN SELL: Downtrend + High Volume + Red Candle + Below EMA Low + No Position
-openSellCondition = downTrend and volAboveEma and redCandle and belowEMALow and not inBuyPosition and not inSellPosition
+// 3. OPEN SELL: Downtrend + High Volume + Red Candle + Below EMA Low + No Current Position (using lookahead)
+openSellCondition = downTrend and volAboveEma and redCandle and belowEMALow and not (inBuyPosition[1] and not trendChangedToDowntrend) and not (inSellPosition[1] and not trendChangedToUptrend)
 
 // 4. CLOSE SELL: Trend Changes to Uptrend + Currently in Sell Position
-closeSellCondition = trendChangedToUptrend and inSellPosition
+closeSellCondition = trendChangedToUptrend and inSellPosition[1]
 
 // Update Position State (use barstate.isfirst to initialize)
 if openBuyCondition
@@ -91,7 +91,7 @@ fill(bbUpperBandHigh, bbLowerBandHigh, color= isBB ? color.new(color.aqua, 90) :
 
 // Smoothing MA plots for Low EMA
 smoothingMALow = enableMA ? ma(outLow, maLengthInput, maTypeInput) : na
-smoothingStDevLow = isBB ? ta.stdev(outLow, maLengthInput) * bbMultInput : na
+smoothingStDevLow = isBB ? ta.stdev(outLow, maLengthInput) * bbMultInput : bbMultInput
 plot(smoothingMALow, "EMA Low-based MA", color=color.orange, display = enableMA ? display.all : display.none, editable = enableMA)
 bbUpperBandLow = plot(smoothingMALow + smoothingStDevLow, title = "Upper Bollinger Band Low", color=color.fuchsia, display = isBB ? display.all : display.none, editable = isBB)
 bbLowerBandLow = plot(smoothingMALow - smoothingStDevLow, title = "Lower Bollinger Band Low", color=color.fuchsia, display = isBB ? display.all : display.none, editable = isBB)
