@@ -1,0 +1,322 @@
+//@version=6
+indicator(title="Moving Average Exponential — EMA + Backtest Table", shorttitle="EMA + Backtest", overlay=true)
+
+// --------------------
+// ========== USER SIGNAL/INDICATOR SECTION (unchanged) ==========
+// --------------------
+len = input.int(20, minval=1, title="Length")
+srcHigh = input(high, title="Source High")
+srcLow = input(low, title="Source Low")
+offset = input.int(title="Offset", defval=0, minval=-500, maxval=500, display = display.data_window)
+
+outHigh = ta.ema(srcHigh, len)
+outLow = ta.ema(srcLow, len)
+plot(outHigh, title="EMA High", color=color.blue, offset=offset)
+plot(outLow, title="EMA Low", color=color.yellow, offset=offset)
+
+// Volume EMA21 calculation (for signal logic)
+volEmaLen = input.int(21, "Volume EMA Length", minval=1, display = display.data_window)
+volEma = ta.sma(volume, volEmaLen)
+volAboveEma = volume > volEma
+
+// Doji Detection
+dojiThreshold = input.float(10.0, "Doji Threshold %", minval=0.1, maxval=50.0, step=0.1, display = display.data_window, tooltip="Candle body must be less than this percentage of total range to be considered a doji")
+bodySize = math.abs(close - open)
+candleRange = high - low
+isDoji = candleRange > 0 and bodySize <= (candleRange * dojiThreshold / 100.0)
+
+// Candle Color Detection and EMA Level Comparison
+greenCandle = close > open
+redCandle = close < open
+aboveEMAHigh = close > outHigh
+belowEMALow = close < outLow
+
+// SuperTrend indicator
+atrPeriod = input.int(10, "ATR Length", minval=1, group="SuperTrend", display = display.data_window)
+factor = input.float(3.5, "Factor", minval=0.01, step=0.01, group="SuperTrend", display = display.data_window)
+[supertrend, direction] = ta.supertrend(factor, atrPeriod)
+supertrend := barstate.isfirst ? na : supertrend
+upTrend = direction < 0
+downTrend = direction > 0
+
+// Plot SuperTrend with separate uptrend and downtrend lines
+supertrendUptrend = plot(upTrend ? supertrend : na, "SuperTrend Uptrend", color=color.lime, style=plot.style_linebr, offset=offset)
+supertrendDowntrend = plot(downTrend ? supertrend : na, "SuperTrend Downtrend", color=color.red, style=plot.style_linebr, offset=offset)
+
+// Body middle plot for background fill reference
+bodyMiddle = plot(barstate.isfirst ? na : (open + close) / 2, "Body Middle", display=display.none)
+fill(bodyMiddle, supertrendUptrend, title="SuperTrend Uptrend Background", color=color.new(color.lime, 90), fillgaps=false)
+fill(bodyMiddle, supertrendDowntrend, title="SuperTrend Downtrend Background", color=color.new(color.red, 90), fillgaps=false)
+
+// Detect trend changes
+trendChangedToUptrend = not upTrend[1] and upTrend
+trendChangedToDowntrend = upTrend[1] and not upTrend
+
+// State Machine Signal Logic (original conditions)
+openBuyCondition = upTrend and volAboveEma and greenCandle and aboveEMAHigh and not isDoji
+closeBuyCondition = trendChangedToDowntrend
+openSellCondition = downTrend and volAboveEma and redCandle and belowEMALow and not isDoji
+closeSellCondition = trendChangedToUptrend
+
+// Plot 4 Distinct Position Signals (visual)
+plotshape(openBuyCondition, title="Open Buy", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.small, text="BUY")
+plotshape(closeBuyCondition, title="Close Buy", location=location.abovebar, color=color.blue, style=shape.xcross, size=size.small, text="CLOSE BUY")
+plotshape(openSellCondition, title="Open Sell", location=location.belowbar, color=color.red, style=shape.triangledown, size=size.small, text="SELL")
+plotshape(closeSellCondition, title="Close Sell", location=location.abovebar, color=color.orange, style=shape.xcross, size=size.small, text="CLOSE SELL")
+
+// --------------------
+// ========== SMOOTHING MA/BB SECTION (unchanged) ==========
+// --------------------
+GRP = "Smoothing"
+TT_BB = "Only applies when 'SMA + Bollinger Bands' is selected. Determines the distance between the SMA and the bands."
+maTypeInput = input.string("None", "Type", options = ["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group = GRP, display = display.data_window)
+var isBB = maTypeInput == "SMA + Bollinger Bands"
+maLengthInput = input.int(14, "Length", group = GRP, display = display.data_window, active = maTypeInput != "None")
+bbMultInput = input.float(2.0, "BB StdDev", minval = 0.001, maxval = 50, step = 0.5, tooltip = TT_BB, group = GRP, display = display.data_window, active = isBB)
+var enableMA = maTypeInput != "None"
+
+ma(source, length, MAtype) =>
+	switch MAtype
+		"SMA"                   => ta.sma(source, length)
+		"SMA + Bollinger Bands" => ta.sma(source, length)
+		"EMA"                   => ta.ema(source, length)
+		"SMMA (RMA)"            => ta.rma(source, length)
+		"WMA"                   => ta.wma(source, length)
+		"VWMA"                  => ta.vwma(source, length)
+
+smoothingMAHigh = enableMA ? ma(outHigh, maLengthInput, maTypeInput) : na
+smoothingStDevHigh = isBB ? ta.stdev(outHigh, maLengthInput) * bbMultInput : na
+plot(smoothingMAHigh, "EMA High-based MA", color=color.lime, display = enableMA ? display.all : display.none, editable = enableMA)
+bbUpperBandHigh = plot(smoothingMAHigh + smoothingStDevHigh, title = "Upper Bollinger Band High", color=color.aqua, display = isBB ? display.all : display.none, editable = isBB)
+bbLowerBandHigh = plot(smoothingMAHigh - smoothingStDevHigh, title = "Lower Bollinger Band High", color=color.aqua, display = isBB ? display.all : display.none, editable = isBB)
+fill(bbUpperBandHigh, bbLowerBandHigh, color= isBB ? color.new(color.aqua, 90) : na, title="Bollinger Bands Background Fill High", display = isBB ? display.all : display.none, editable = isBB)
+
+smoothingMALow = enableMA ? ma(outLow, maLengthInput, maTypeInput) : na
+smoothingStDevLow = isBB ? ta.stdev(outLow, maLengthInput) * bbMultInput : bbMultInput
+plot(smoothingMALow, "EMA Low-based MA", color=color.orange, display = enableMA ? display.all : display.none, editable = enableMA)
+bbUpperBandLow = plot(smoothingMALow + smoothingStDevLow, title = "Upper Bollinger Band Low", color=color.fuchsia, display = isBB ? display.all : display.none, editable = isBB)
+bbLowerBandLow = plot(smoothingMALow - smoothingStDevLow, title = "Lower Bollinger Band Low", color=color.fuchsia, display = isBB ? display.all : display.none, editable = isBB)
+fill(bbUpperBandLow, bbLowerBandLow, color= isBB ? color.new(color.fuchsia, 90) : na, title="Bollinger Bands Background Fill Low", display = isBB ? display.all : display.none, editable = isBB)
+
+// --------------------
+// ========== BACKTEST LIB (as provided) ==========
+// --------------------
+// Courtsey: https://www.tradingview.com/script/tsHCuCEi-Backtest-Strategy-Optimizer-Adapter/
+// Library: Backtest Strategy Optimizer Adapter
+// Author: DinGrogu
+
+f_backtest_table_margin(int margin) =>
+    margin_string = ''
+    for i = 1 to margin
+        margin_string := margin_string + ' '
+    margin_string
+
+f_backtest_table(_initial_capital, _profit_perc_total, _open_balance, _winrate, _entries, _exits, _wins, _losses, stockGrowth, _table_position='RIGHT', _table_margin=15, _table_transparency=20, _table_cell_color=color.purple, _table_title_cell_color=color.gray, _table_text_color=color.white) =>
+    green = #26A69A
+    red = #FF5252
+
+    table_width = 0
+    table_margin_right = _table_margin > 0 ? str.tostring(f_backtest_table_margin(_table_margin)) : ''
+    table_position = _table_position == 'LEFT' ? position.bottom_left : position.bottom_right
+
+    table_titles = _table_position == 'LEFT' ? 1 : 0
+    table_values = _table_position == 'LEFT' ? 2 : 1
+    table_offset = _table_position == 'LEFT' ? 0 : 2
+
+    backtesting_table = table.new(table_position, columns=3, rows=8, border_width=3)
+    profit_color = _open_balance > _initial_capital ? green : red
+
+    // Headers
+    table.cell(backtesting_table, table_titles, 0, text='    Investment per trade    ', bgcolor=_table_title_cell_color, text_color=_table_text_color,  text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 1, text='    Close Balance    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 2, text='    Profit ($)    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 3, text='    Total Profit    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 4, text='    Stock Growth    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 5, text='    Entries / Exits    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 6, text='    Wins / Losses   ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 7, text='    Winrate    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+
+    // Values
+    table.cell(backtesting_table, table_values, 0, text='    ' + str.tostring(_initial_capital, '###,###.##') + '   ', width=table_width, bgcolor=color.new(_table_cell_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 1, text='    ' + str.tostring(_open_balance, '###,###.##') + '   ', width=table_width, bgcolor=color.new(profit_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 2, text='    ' + str.tostring(_open_balance - _initial_capital, '###,###.##') + '   ', width=table_width, bgcolor=color.new(profit_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 3, text='    ' + str.tostring(_profit_perc_total, format.percent) + '   ', width=table_width, bgcolor=color.new(_profit_perc_total >= 0 ? green : red, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 4, text='    ' + str.tostring(stockGrowth, '#.##') + '%' + '   ', width=table_width, bgcolor=color.new(_table_cell_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 5, text='    ' + str.tostring(_entries, '###,###.##') + ' / ' + str.tostring(_exits, '###,###.##') + '   ', width=table_width, bgcolor=color.new(_table_cell_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 6, text='    ' + str.tostring(_wins, '###,###.##') + ' / ' + str.tostring(_losses, '###,###.##') + '   ', width=table_width, bgcolor=color.new(_table_cell_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 7, text='    ' + str.tostring(_winrate, '#.##') + '%' + '   ', width=table_width, bgcolor=color.new(_table_cell_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+
+    table.cell(backtesting_table, table_offset, 0, table_margin_right, bgcolor=color.new(color.white, 100), text_color=color.white, text_size=size.small)
+
+f_checkpoint_table(_profit_perc_checkpoint_1, _profit_perc_checkpoint_2, _profit_perc_checkpoint_3, _wins_checkpoint_1, _wins_checkpoint_2, _wins_checkpoint_3, _losses_checkpoint_1, _losses_checkpoint_2, _losses_checkpoint_3, _stock_growth_checkpoint_1, _stock_growth_checkpoint_2, _stock_growth_checkpoint_3, _table_position='LEFT', _table_margin=15, _table_transparency=20, _table_cell_color=color.purple, _table_title_cell_color=color.gray, _table_text_color=color.white) =>
+    green = #26A69A
+    red = #FF5252
+
+    table_width = 0
+    table_margin_right = _table_margin > 0 ? str.tostring(f_backtest_table_margin(_table_margin)) : ''
+    table_position = _table_position == 'LEFT' ? position.bottom_left : position.bottom_right
+
+    table_titles = _table_position == 'LEFT' ? 1 : 0
+    table_values = _table_position == 'LEFT' ? 2 : 1
+    table_offset = _table_position == 'LEFT' ? 0 : 2
+
+    backtesting_table = table.new(position.bottom_left, columns=3, rows=9, border_width=3)
+
+    // Headers
+    table.cell(backtesting_table, table_titles, 0, text='    Checkpoint 1 Profit    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 1, text='    Checkpoint 1 Wins / Losses    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 2, text='    Checkpoint 1 Stock Growth    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    
+    table.cell(backtesting_table, table_titles, 3, text='    Checkpoint 2 Profit    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 4, text='    Checkpoint 2 Wins / Losses    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 5, text='    Checkpoint 2 Stock Growth    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    
+    table.cell(backtesting_table, table_titles, 6, text='    Checkpoint 3 Profit    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 7, text='    Checkpoint 3 Wins / Losses    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+    table.cell(backtesting_table, table_titles, 8, text='    Checkpoint 3 Stock Growth    ', bgcolor=_table_title_cell_color, text_color=_table_text_color, text_halign=text.align_left, text_size=size.small)
+
+    // Values
+    table.cell(backtesting_table, table_values, 0, text='    ' + str.tostring(_profit_perc_checkpoint_1, format.percent), width=table_width, bgcolor=color.new(_profit_perc_checkpoint_1 >= 0 ? green : red, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 1, text='    ' + str.tostring(_wins_checkpoint_1) + '/' + str.tostring(_losses_checkpoint_1), width=table_width, bgcolor=color.new(_table_cell_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 2, text='    ' + str.tostring(_stock_growth_checkpoint_1, format.percent), width=table_width, bgcolor=color.new(_table_cell_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+
+    table.cell(backtesting_table, table_values, 3, text='    ' + str.tostring(_profit_perc_checkpoint_2, format.percent), width=table_width, bgcolor=color.new(_profit_perc_checkpoint_2 >= 0 ? green : red, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 4, text='    ' + str.tostring(_wins_checkpoint_2) + '/' + str.tostring(_losses_checkpoint_2), width=table_width, bgcolor=color.new(_table_cell_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 5, text='    ' + str.tostring(_stock_growth_checkpoint_2, format.percent), width=table_width, bgcolor=color.new(_table_cell_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    
+    table.cell(backtesting_table, table_values, 6, text='    ' + str.tostring(_profit_perc_checkpoint_3, format.percent), width=table_width, bgcolor=color.new(_profit_perc_checkpoint_3 >= 0 ? green : red, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 7, text='    ' + str.tostring(_wins_checkpoint_3) + '/' + str.tostring(_losses_checkpoint_3), width=table_width, bgcolor=color.new(_table_cell_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+    table.cell(backtesting_table, table_values, 8, text='    ' + str.tostring(_stock_growth_checkpoint_3, format.percent), width=table_width, bgcolor=color.new(_table_cell_color, _table_transparency), text_color=color.new(color.white, 0), text_halign=text.align_right, text_size=size.small)
+
+    table.cell(backtesting_table, table_offset, 0, table_margin_right, bgcolor=color.new(color.white, 100), text_color=color.white, text_size=size.small)
+
+// Main backtesting function (f_backtest_main) and do_transaction (as per your snippet)
+f_backtest_main(_date_start, _date_end, _entry_signal, _exit_signal, _take_profit_percentage=0.0, _stop_loss_percentage=0.0, _atr_length=0, _initial_capital=1000.00, _order_size=100, _commission=0.0, _on_bar_close=false, _high=high, _low=low, _src=close, _chart=false) =>
+    var entries = 0
+    var exits = 0
+    var wins = 0
+    var losses = 0
+
+    var float quantity_purchased = 0.0
+    var float winrate = 0.0
+    var float global_profit = 0.0
+    var float profit_perc = 0.0
+
+    var open_trade = false
+
+    initial_capital = _initial_capital
+
+    var float close_balance_till_curr_bar = na
+
+    var last_bar = last_bar_index
+
+    date_in_range = _date_start < 476928000 ? (last_bar - bar_index <= _date_start) : (time >= _date_start and time < _date_end)
+
+    if (date_in_range)
+        var last_entry_signal_bar_index = 0
+
+        var entry_price = 0.0
+        var exit_price = 0.0
+        var exit_profit = 0.0
+        var exit_comment = ''
+
+        entry_signal = _entry_signal
+        entry_condition = not open_trade and entry_signal
+
+        if (entry_condition)
+            open_trade := true
+            entry_price := _src
+
+            if (_chart)
+                last_entry_signal_bar_index := bar_index
+
+                entry_label_bar_index = _on_bar_close ? last_entry_signal_bar_index : last_entry_signal_bar_index + 1
+                entry_label_text = str.tostring(math.round_to_mintick(entry_price))
+                label.new(entry_label_bar_index, na, entry_label_text, color=color.green, textcolor=color.white, size=size.normal, style=label.style_label_up, yloc=yloc.belowbar)
+            
+            quantity_purchased := initial_capital / entry_price
+
+            entries += 1
+            exit_price := na
+
+        exit_signal = _exit_signal
+        exit_condition = open_trade and exit_signal
+        exit_signal_value = ta.valuewhen(exit_condition, _src, 0)
+
+        if (exit_condition)
+            open_trade := false
+            exit_price := _src
+
+            if (_chart)
+                line_profit_color = entry_price < exit_price ? color.green : color.red
+                label_profit_color = entry_price < exit_price ? color.blue : color.red
+
+                line_bar_index = _on_bar_close ? last_entry_signal_bar_index : last_entry_signal_bar_index + 1
+                line.new(line_bar_index, exit_price, bar_index, exit_price, extend=extend.none, color=color.new(line_profit_color, 20))
+
+                exit_profit := (((exit_price - entry_price) / entry_price) * 100)
+
+                bar_index_exit_label = _on_bar_close ? bar_index : bar_index + 1
+                label.new(bar_index_exit_label, na, exit_comment + str.tostring(math.round_to_mintick(exit_price)) + ' (' + str.tostring(exit_profit, '#.##') + '%)', color=label_profit_color, textcolor=color.white, size=size.normal, style=label.style_label_down, yloc=yloc.abovebar)
+
+                last_entry_signal_bar_index := 0
+
+            if (exit_price > entry_price)
+                wins += 1
+            else
+                losses += 1
+
+            winrate := nz(math.round((wins / (wins + losses) * 100), 2))
+
+            entry_price := na
+            exit_profit := 0
+
+            closing_balance = quantity_purchased * exit_signal_value
+            curr_trade_profit = closing_balance - initial_capital
+            
+            global_profit := global_profit + curr_trade_profit
+            profit_perc := (global_profit/ (initial_capital)) * 100
+
+            close_balance_till_curr_bar := initial_capital + global_profit
+
+            exits += 1
+
+    [profit_perc, close_balance_till_curr_bar, winrate, entries, exits, wins, losses]
+
+do_transaction(int _date_start, int _date_end, bool _entry_signal, bool _exit_signal, simple float _take_profit_percentage=0.0, simple float _stop_loss_percentage=0.0, simple int _atr_length=0, float _initial_capital=1000.00, float _order_size=100, float _commission=0.0, bool _on_bar_close=true, series float _high=high, series float _low=low, series float _src=close, simple bool _chart=true) =>
+    [profit_perc, open_balance, winrate, entries, exits, wins, losses] = f_backtest_main(_date_start, _date_end, _entry_signal, _exit_signal, _take_profit_percentage, _stop_loss_percentage, _atr_length, _initial_capital, _order_size, _commission, _on_bar_close, _high, _low, _src, _chart)
+
+// --------------------
+// ========== BACKTEST DRIVER (NEW) ==========
+// --------------------
+// Backtest date/time inputs (use timestamps so adapter uses time-range check branch)
+bt_start = input.time(timestamp("2000-01-01T00:00"), "Backtest Start (timestamp)", group="Backtest")
+bt_end   = input.time(timestamp("2050-01-01T00:00"), "Backtest End (timestamp)", group="Backtest")
+
+// Fixed nominal trade size per your instruction
+initial_capital_per_trade = 1000.0
+
+// Run backtest for LONG trades (entry= openBuyCondition, exit= closeBuyCondition)
+[profit_perc_l, open_balance_l, winrate_l, entries_l, exits_l, wins_l, losses_l] = do_transaction(bt_start, bt_end, openBuyCondition, closeBuyCondition, 0.0, 0.0, atrPeriod, initial_capital_per_trade, initial_capital_per_trade, 0.0, true, high, low, close, true)
+
+// Run backtest for SHORT trades (entry= openSellCondition, exit= closeSellCondition)
+[profit_perc_s, open_balance_s, winrate_s, entries_s, exits_s, wins_s, losses_s] = do_transaction(bt_start, bt_end, openSellCondition, closeSellCondition, 0.0, 0.0, atrPeriod, initial_capital_per_trade, initial_capital_per_trade, 0.0, true, high, low, close, true)
+
+// Aggregate metrics across long + short (treating each side independently but reporting single aggregated table)
+profit_usd_long = open_balance_l - initial_capital_per_trade
+profit_usd_short = open_balance_s - initial_capital_per_trade
+total_profit_usd = profit_usd_long + profit_usd_short
+
+overall_open_balance = initial_capital_per_trade + total_profit_usd
+profit_perc_total = initial_capital_per_trade != 0 ? (total_profit_usd / initial_capital_per_trade) * 100 : na
+
+entries_total = entries_l + entries_s
+exits_total = exits_l + exits_s
+wins_total = wins_l + wins_s
+losses_total = losses_l + losses_s
+winrate_total = (wins_total + losses_total) > 0 ? (wins_total / (wins_total + losses_total)) * 100 : na
+
+stockGrowth = initial_capital_per_trade != 0 ? ((overall_open_balance / initial_capital_per_trade) - 1) * 100 : na
+
+// Draw aggregated backtest table on chart (bottom-right by default)
+f_backtest_table(initial_capital_per_trade, profit_perc_total, overall_open_balance, winrate_total, entries_total, exits_total, wins_total, losses_total, stockGrowth, 'RIGHT', 15, 20, color.purple, color.gray, color.white)
