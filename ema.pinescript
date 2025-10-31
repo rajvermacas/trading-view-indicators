@@ -15,7 +15,7 @@ volEma = ta.sma(volume, volEmaLen)
 volAboveEma = volume > volEma
 
 // Doji Detection
-dojiThreshold = input.float(10.0, "Doji Threshold %", minval=0.1, maxval=50.0, step=0.1, display = display.data_window, tooltip="Candle body must be less than this percentage of total range to be considered a doji")
+dojiThreshold = input.float(15.0, "Doji Threshold %", minval=0.1, maxval=50.0, step=0.1, display = display.data_window, tooltip="Candle body must be less than this percentage of total range to be considered a doji")
 bodySize = math.abs(close - open)
 candleRange = high - low
 isDoji = candleRange > 0 and bodySize <= (candleRange * dojiThreshold / 100.0)
