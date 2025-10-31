@@ -1,0 +1,144 @@
+//@version=6
+indicator(title="Dual RSI (14 & 50) with MA, BB, Divergence", shorttitle="Dual RSI", format=format.price, precision=2, timeframe="", timeframe_gaps=true)
+
+// ===========================
+// === RSI(14) SECTION =======
+// ===========================
+
+rsi1LengthInput = input.int(14, minval=1, title="RSI Length (14)", group="RSI 14 Settings")
+rsi1SourceInput = input.source(close, "Source", group="RSI 14 Settings")
+calculateDivergence1 = input.bool(false, title="Calculate Divergence (RSI 14)", group="RSI 14 Settings")
+
+change1 = ta.change(rsi1SourceInput)
+up1 = ta.rma(math.max(change1, 0), rsi1LengthInput)
+down1 = ta.rma(-math.min(change1, 0), rsi1LengthInput)
+rsi1 = down1 == 0 ? 100 : up1 == 0 ? 0 : 100 - (100 / (1 + up1 / down1))
+
+// Plot RSI(14)
+rsi1Plot = plot(rsi1, "RSI(14)", color=color.new(#7E57C2, 0))
+rsiUpperBand1 = hline(70, "RSI(14) Upper Band", color=#787B86)
+rsiMidline1 = hline(50, "RSI(14) Midline", color=color.new(#787B86, 50))
+rsiLowerBand1 = hline(30, "RSI(14) Lower Band", color=#787B86)
+fill(rsiUpperBand1, rsiLowerBand1, color=color.rgb(126, 87, 194, 90))
+
+// === MA + BB for RSI(14)
+grp1 = "RSI 14 Smoothing"
+maType1 = input.string("SMA", "MA Type", options=["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group=grp1)
+maLen1 = input.int(14, "MA Length", group=grp1)
+bbMult1 = input.float(2.0, "BB StdDev", minval=0.001, step=0.5, group=grp1)
+isBB1 = maType1 == "SMA + Bollinger Bands"
+enableMA1 = maType1 != "None"
+
+maFunc(source, length, MAtype) =>
+    switch MAtype
+        "SMA"                   => ta.sma(source, length)
+        "SMA + Bollinger Bands" => ta.sma(source, length)
+        "EMA"                   => ta.ema(source, length)
+        "SMMA (RMA)"            => ta.rma(source, length)
+        "WMA"                   => ta.wma(source, length)
+        "VWMA"                  => ta.vwma(source, length)
+
+ma1 = enableMA1 ? maFunc(rsi1, maLen1, maType1) : na
+stdev1 = isBB1 ? ta.stdev(rsi1, maLen1) * bbMult1 : na
+plot(ma1, "RSI(14) MA", color=color.yellow, display=enableMA1 ? display.all : display.none)
+bbUpper1 = plot(ma1 + stdev1, "RSI(14) Upper BB", color=color.green, display=isBB1 ? display.all : display.none)
+bbLower1 = plot(ma1 - stdev1, "RSI(14) Lower BB", color=color.green, display=isBB1 ? display.all : display.none)
+fill(bbUpper1, bbLower1, color=isBB1 ? color.new(color.green, 90) : na)
+
+// === Divergence RSI(14)
+lookbackRight = 5
+lookbackLeft = 5
+rangeUpper = 60
+rangeLower = 5
+
+_inRange(cond) =>
+    bars = ta.barssince(cond)
+    rangeLower <= bars and bars <= rangeUpper
+
+plFound1 = false
+phFound1 = false
+bullCond1 = false
+bearCond1 = false
+
+rsi1LBR = rsi1[lookbackRight]
+if calculateDivergence1
+    plFound1 := not na(ta.pivotlow(rsi1, lookbackLeft, lookbackRight))
+    rsiHL1 = rsi1LBR > ta.valuewhen(plFound1, rsi1LBR, 1) and _inRange(plFound1[1])
+    lowLBR1 = low[lookbackRight]
+    priceLL1 = lowLBR1 < ta.valuewhen(plFound1, lowLBR1, 1)
+    bullCond1 := priceLL1 and rsiHL1 and plFound1
+
+    phFound1 := not na(ta.pivothigh(rsi1, lookbackLeft, lookbackRight))
+    rsiLH1 = rsi1LBR < ta.valuewhen(phFound1, rsi1LBR, 1) and _inRange(phFound1[1])
+    highLBR1 = high[lookbackRight]
+    priceHH1 = highLBR1 > ta.valuewhen(phFound1, highLBR1, 1)
+    bearCond1 := priceHH1 and rsiLH1 and phFound1
+
+plot(plFound1 ? rsi1LBR : na, offset=-lookbackRight, color=bullCond1 ? color.green : na)
+plot(phFound1 ? rsi1LBR : na, offset=-lookbackRight, color=bearCond1 ? color.red : na)
+plotshape(bullCond1 ? rsi1LBR : na, offset=-lookbackRight, title="RSI(14) Bullish", text="Bull14", style=shape.labelup, color=color.green, textcolor=color.white)
+plotshape(bearCond1 ? rsi1LBR : na, offset=-lookbackRight, title="RSI(14) Bearish", text="Bear14", style=shape.labeldown, color=color.red, textcolor=color.white)
+alertcondition(bullCond1, title='RSI(14) Bullish Divergence', message="RSI(14) Bullish Divergence")
+alertcondition(bearCond1, title='RSI(14) Bearish Divergence', message="RSI(14) Bearish Divergence")
+
+// ===========================
+// === RSI(50) SECTION =======
+// ===========================
+
+rsi2LengthInput = input.int(50, minval=1, title="RSI Length (50)", group="RSI 50 Settings")
+rsi2SourceInput = input.source(close, "Source", group="RSI 50 Settings")
+calculateDivergence2 = input.bool(false, title="Calculate Divergence (RSI 50)", group="RSI 50 Settings")
+
+change2 = ta.change(rsi2SourceInput)
+up2 = ta.rma(math.max(change2, 0), rsi2LengthInput)
+down2 = ta.rma(-math.min(change2, 0), rsi2LengthInput)
+rsi2 = down2 == 0 ? 100 : up2 == 0 ? 0 : 100 - (100 / (1 + up2 / down2))
+
+// Plot RSI(50)
+rsi2Plot = plot(rsi2, "RSI(50)", color=color.new(color.orange, 0))
+rsiUpperBand2 = hline(70, "RSI(50) Upper Band", color=color.new(color.orange, 60))
+rsiMidline2 = hline(50, "RSI(50) Midline", color=color.new(color.orange, 80))
+rsiLowerBand2 = hline(30, "RSI(50) Lower Band", color=color.new(color.orange, 60))
+fill(rsiUpperBand2, rsiLowerBand2, color=color.new(color.orange, 85))
+
+// === MA + BB for RSI(50)
+grp2 = "RSI 50 Smoothing"
+maType2 = input.string("SMA", "MA Type", options=["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group=grp2)
+maLen2 = input.int(50, "MA Length", group=grp2)
+bbMult2 = input.float(2.0, "BB StdDev", minval=0.001, step=0.5, group=grp2)
+isBB2 = maType2 == "SMA + Bollinger Bands"
+enableMA2 = maType2 != "None"
+
+ma2 = enableMA2 ? maFunc(rsi2, maLen2, maType2) : na
+stdev2 = isBB2 ? ta.stdev(rsi2, maLen2) * bbMult2 : na
+plot(ma2, "RSI(50) MA", color=color.new(color.yellow, 0), display=enableMA2 ? display.all : display.none)
+bbUpper2 = plot(ma2 + stdev2, "RSI(50) Upper BB", color=color.new(color.green, 0), display=isBB2 ? display.all : display.none)
+bbLower2 = plot(ma2 - stdev2, "RSI(50) Lower BB", color=color.new(color.green, 0), display=isBB2 ? display.all : display.none)
+fill(bbUpper2, bbLower2, color=isBB2 ? color.new(color.green, 90) : na)
+
+// === Divergence RSI(50)
+plFound2 = false
+phFound2 = false
+bullCond2 = false
+bearCond2 = false
+
+rsi2LBR = rsi2[lookbackRight]
+if calculateDivergence2
+    plFound2 := not na(ta.pivotlow(rsi2, lookbackLeft, lookbackRight))
+    rsiHL2 = rsi2LBR > ta.valuewhen(plFound2, rsi2LBR, 1) and _inRange(plFound2[1])
+    lowLBR2 = low[lookbackRight]
+    priceLL2 = lowLBR2 < ta.valuewhen(plFound2, lowLBR2, 1)
+    bullCond2 := priceLL2 and rsiHL2 and plFound2
+
+    phFound2 := not na(ta.pivothigh(rsi2, lookbackLeft, lookbackRight))
+    rsiLH2 = rsi2LBR < ta.valuewhen(phFound2, rsi2LBR, 1) and _inRange(phFound2[1])
+    highLBR2 = high[lookbackRight]
+    priceHH2 = highLBR2 > ta.valuewhen(phFound2, highLBR2, 1)
+    bearCond2 := priceHH2 and rsiLH2 and phFound2
+
+plot(plFound2 ? rsi2LBR : na, offset=-lookbackRight, color=bullCond2 ? color.new(color.green, 0) : na)
+plot(phFound2 ? rsi2LBR : na, offset=-lookbackRight, color=bearCond2 ? color.new(color.red, 0) : na)
+plotshape(bullCond2 ? rsi2LBR : na, offset=-lookbackRight, title="RSI(50) Bullish", text="Bull50", style=shape.labelup, color=color.new(color.green, 0), textcolor=color.white)
+plotshape(bearCond2 ? rsi2LBR : na, offset=-lookbackRight, title="RSI(50) Bearish", text="Bear50", style=shape.labeldown, color=color.new(color.red, 0), textcolor=color.white)
+alertcondition(bullCond2, title='RSI(50) Bullish Divergence', message="RSI(50) Bullish Divergence")
+alertcondition(bearCond2, title='RSI(50) Bearish Divergence', message="RSI(50) Bearish Divergence")

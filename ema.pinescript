@@ -1,0 +1,45 @@
+//@version=6
+indicator(title="Moving Average Exponential", shorttitle="EMA", overlay=true, timeframe="", timeframe_gaps=true)
+len = input.int(20, minval=1, title="Length")
+srcHigh = input(high, title="Source High")
+srcLow = input(low, title="Source Low")
+offset = input.int(title="Offset", defval=0, minval=-500, maxval=500, display = display.data_window)
+outHigh = ta.ema(srcHigh, len)
+outLow = ta.ema(srcLow, len)
+plot(outHigh, title="EMA High", color=color.green, offset=offset)
+plot(outLow, title="EMA Low", color=color.red, offset=offset)
+
+// Smoothing MA inputs
+GRP = "Smoothing"
+TT_BB = "Only applies when 'SMA + Bollinger Bands' is selected. Determines the distance between the SMA and the bands."
+maTypeInput = input.string("None", "Type", options = ["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group = GRP, display = display.data_window)
+var isBB = maTypeInput == "SMA + Bollinger Bands"
+maLengthInput = input.int(14, "Length", group = GRP, display = display.data_window, active = maTypeInput != "None")
+bbMultInput = input.float(2.0, "BB StdDev", minval = 0.001, maxval = 50, step = 0.5, tooltip = TT_BB, group = GRP, display = display.data_window, active = isBB)
+var enableMA = maTypeInput != "None"
+
+// Smoothing MA Calculation
+ma(source, length, MAtype) =>
+	switch MAtype
+		"SMA"                   => ta.sma(source, length)
+		"SMA + Bollinger Bands" => ta.sma(source, length)
+		"EMA"                   => ta.ema(source, length)
+		"SMMA (RMA)"            => ta.rma(source, length)
+		"WMA"                   => ta.wma(source, length)
+		"VWMA"                  => ta.vwma(source, length)
+
+// Smoothing MA plots for High EMA
+smoothingMAHigh = enableMA ? ma(outHigh, maLengthInput, maTypeInput) : na
+smoothingStDevHigh = isBB ? ta.stdev(outHigh, maLengthInput) * bbMultInput : na
+plot(smoothingMAHigh, "EMA High-based MA", color=color.lime, display = enableMA ? display.all : display.none, editable = enableMA)
+bbUpperBandHigh = plot(smoothingMAHigh + smoothingStDevHigh, title = "Upper Bollinger Band High", color=color.aqua, display = isBB ? display.all : display.none, editable = isBB)
+bbLowerBandHigh = plot(smoothingMAHigh - smoothingStDevHigh, title = "Lower Bollinger Band High", color=color.aqua, display = isBB ? display.all : display.none, editable = isBB)
+fill(bbUpperBandHigh, bbLowerBandHigh, color= isBB ? color.new(color.aqua, 90) : na, title="Bollinger Bands Background Fill High", display = isBB ? display.all : display.none, editable = isBB)
+
+// Smoothing MA plots for Low EMA
+smoothingMALow = enableMA ? ma(outLow, maLengthInput, maTypeInput) : na
+smoothingStDevLow = isBB ? ta.stdev(outLow, maLengthInput) * bbMultInput : na
+plot(smoothingMALow, "EMA Low-based MA", color=color.orange, display = enableMA ? display.all : display.none, editable = enableMA)
+bbUpperBandLow = plot(smoothingMALow + smoothingStDevLow, title = "Upper Bollinger Band Low", color=color.fuchsia, display = isBB ? display.all : display.none, editable = isBB)
+bbLowerBandLow = plot(smoothingMALow - smoothingStDevLow, title = "Lower Bollinger Band Low", color=color.fuchsia, display = isBB ? display.all : display.none, editable = isBB)
+fill(bbUpperBandLow, bbLowerBandLow, color= isBB ? color.new(color.fuchsia, 90) : na, title="Bollinger Bands Background Fill Low", display = isBB ? display.all : display.none, editable = isBB)
