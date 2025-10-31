@@ -6,8 +6,55 @@ srcLow = input(low, title="Source Low")
 offset = input.int(title="Offset", defval=0, minval=-500, maxval=500, display = display.data_window)
 outHigh = ta.ema(srcHigh, len)
 outLow = ta.ema(srcLow, len)
-plot(outHigh, title="EMA High", color=color.blue, offset=offset)
-plot(outLow, title="EMA Low", color=color.yellow, offset=offset)
+plot(outHigh, title="EMA High", color=color.green, offset=offset)
+plot(outLow, title="EMA Low", color=color.red, offset=offset)
+
+// Volume EMA21 calculation (for signal logic)
+volEmaLen = input.int(21, "Volume EMA Length", minval=1, display = display.data_window)
+volEma = ta.ema(volume, volEmaLen)
+volAboveEma = volume > volEma
+
+// Position State Tracking
+var bool inBuyPosition = false
+var bool inSellPosition = false
+
+// SuperTrend indicator
+atrPeriod = input.int(10, "ATR Length", minval=1, group="SuperTrend", display = display.data_window)
+factor = input.float(3.5, "Factor", minval=0.01, step=0.01, group="SuperTrend", display = display.data_window)
+
+[supertrend, direction] = ta.supertrend(factor, atrPeriod)
+supertrend := barstate.isfirst ? na : supertrend
+upTrend = direction < 0
+downTrend = direction > 0
+
+// Detect trend changes
+trendChangedToUptrend = not upTrend[1] and upTrend
+trendChangedToDowntrend = upTrend[1] and not upTrend
+
+// State Machine Signal Logic - 4 Distinct Scenarios
+// 1. OPEN BUY: Uptrend + High Volume + No Position
+openBuyCondition = upTrend and volAboveEma and not inBuyPosition and not inSellPosition
+
+// 2. CLOSE BUY: Trend Changes to Downtrend + Currently in Buy Position
+closeBuyCondition = trendChangedToDowntrend and inBuyPosition
+
+// 3. OPEN SELL: Downtrend + High Volume + No Position
+openSellCondition = downTrend and volAboveEma and not inBuyPosition and not inSellPosition
+
+// 4. CLOSE SELL: Trend Changes to Uptrend + Currently in Sell Position
+closeSellCondition = trendChangedToUptrend and inSellPosition
+
+// Update Position State (use barstate.isfirst to initialize)
+if openBuyCondition
+    inBuyPosition := true
+    inSellPosition := false
+if closeBuyCondition
+    inBuyPosition := false
+if openSellCondition
+    inSellPosition := true
+    inBuyPosition := false
+if closeSellCondition
+    inSellPosition := false
 
 // Smoothing MA inputs
 GRP = "Smoothing"
@@ -43,3 +90,16 @@ plot(smoothingMALow, "EMA Low-based MA", color=color.orange, display = enableMA 
 bbUpperBandLow = plot(smoothingMALow + smoothingStDevLow, title = "Upper Bollinger Band Low", color=color.fuchsia, display = isBB ? display.all : display.none, editable = isBB)
 bbLowerBandLow = plot(smoothingMALow - smoothingStDevLow, title = "Lower Bollinger Band Low", color=color.fuchsia, display = isBB ? display.all : display.none, editable = isBB)
 fill(bbUpperBandLow, bbLowerBandLow, color= isBB ? color.new(color.fuchsia, 90) : na, title="Bollinger Bands Background Fill Low", display = isBB ? display.all : display.none, editable = isBB)
+
+// Plot 4 Distinct Position Signals
+// 1. OPEN BUY - Green, below bar
+plotshape(openBuyCondition, title="Open Buy", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.normal, text="BUY")
+
+// 2. CLOSE BUY - Blue, above bar
+plotshape(closeBuyCondition, title="Close Buy", location=location.abovebar, color=color.blue, style=shape.xcross, size=size.normal, text="CLOSE BUY")
+
+// 3. OPEN SELL - Red, below bar
+plotshape(openSellCondition, title="Open Sell", location=location.belowbar, color=color.red, style=shape.triangledown, size=size.normal, text="SELL")
+
+// 4. CLOSE SELL - Orange, above bar
+plotshape(closeSellCondition, title="Close Sell", location=location.abovebar, color=color.orange, style=shape.xcross, size=size.normal, text="CLOSE SELL")
