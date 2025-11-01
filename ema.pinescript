@@ -99,7 +99,7 @@ if closeSellCondition and not initialBuyCondition
          (not buyConditionCheck5 ? "Doji! " : "") +
          (not buyConditionCheck6 ? "InBuy " : "") +
          (not buyConditionCheck7 ? "InSell " : "")
-    label.new(bar_index, high, debugText, style=label.style_label_down, color=color.yellow, textcolor=color.black, size=size.small)
+    // label.new(bar_index, high, debugText, style=label.style_label_down, color=color.yellow, textcolor=color.black, size=size.small)
 
 // Confirmation Logic
 // When initial buy condition triggers, store the high and await confirmation
