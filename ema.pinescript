@@ -30,6 +30,10 @@ var bool awaitingSellConfirmation = false
 var float buySignalHigh = na
 var float sellSignalLow = na
 
+// Entry Candle Level Tracking for Close Logic
+var float buyEntryLow = na
+var float sellEntryHigh = na
+
 // Candle Color Detection and EMA Level Comparison
 greenCandle = close > open
 redCandle = close < open
@@ -61,8 +65,11 @@ trendChangedToUptrend = not upTrend[1] and upTrend
 trendChangedToDowntrend = upTrend[1] and not upTrend
 
 // Close Conditions (defined early so they can be used in initial signal logic)
-closeBuyCondition = trendChangedToDowntrend and inBuyPosition[1]
-closeSellCondition = trendChangedToUptrend and inSellPosition[1]
+// Enhanced with candle breakout logic:
+// - Buy closes on SuperTrend reversal OR current close below entry candle low
+// - Sell closes on SuperTrend reversal OR current close above entry candle high
+closeBuyCondition = (trendChangedToDowntrend or (close < buyEntryLow[1] and not na(buyEntryLow[1]))) and inBuyPosition[1]
+closeSellCondition = (trendChangedToUptrend or (close > sellEntryHigh[1] and not na(sellEntryHigh[1]))) and inSellPosition[1]
 
 // Initial Signal Conditions - allow same candle as close to generate new initial signal
 // Check if we're currently in a position AFTER accounting for closes on this bar
@@ -127,21 +134,25 @@ openSellCondition = sellConfirmed
 // Update Position State - Process closes FIRST, then opens
 if closeBuyCondition
     inBuyPosition := false
+    buyEntryLow := na  // Reset entry low when position closes
 
 if closeSellCondition
     inSellPosition := false
+    sellEntryHigh := na  // Reset entry high when position closes
 
 if openBuyCondition
     inBuyPosition := true
     inSellPosition := false
     awaitingBuyConfirmation := false
     buySignalHigh := na
+    buyEntryLow := low  // Capture the low of the entry candle for breakout-based closing
 
 if openSellCondition
     inSellPosition := true
     inBuyPosition := false
     awaitingSellConfirmation := false
     sellSignalLow := na
+    sellEntryHigh := high  // Capture the high of the entry candle for breakout-based closing
 
 // Smoothing MA inputs
 GRP = "Smoothing"
