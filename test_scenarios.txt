@@ -1,0 +1,49 @@
+EMA Strategy - Signal Logic Test Scenarios
+============================================
+
+The fix ensures Initial Buy/Sell signals only trigger when flat (no open position).
+
+## Scenario 1: Starting Flat (No Position)
+- State: inBuyPosition[1] = false, inSellPosition[1] = false
+- Currently: currentlyInBuy = false, currentlyInSell = false
+- Awaiting: awaitingBuyConfirmation[1] = false, awaitingSellConfirmation[1] = false
+- isFlat = not false and not false and not false and not false = true
+- Result: ✓ Initial signals CAN trigger
+
+## Scenario 2: In a Buy Position
+- State: inBuyPosition[1] = true
+- Currently: currentlyInBuy = true and not false = true
+- isFlat = not true and ... = false
+- Result: ✓ Initial signals CANNOT trigger
+
+## Scenario 3: Closing a Buy Position (Same Bar Re-entry)
+- State: inBuyPosition[1] = true
+- Action: closeBuyCondition = true (SuperTrend reversal or breakout)
+- Position: Will be set to false on this bar (line 138)
+- Currently: currentlyInBuy = true and not true = false (we're closing)
+- isFlat = not false and ... = true
+- Result: ✓ Initial signals CAN trigger on same bar after close
+
+## Scenario 4: Awaiting Buy Confirmation
+- State: awaitingBuyConfirmation[1] = true
+- Currently: currentlyInBuy = false, currentlyInSell = false
+- isFlat = not false and not false and not true and not false = false
+- Result: ✓ Initial signals CANNOT trigger
+
+## Scenario 5: Closing Sell and Opening Buy (Same Bar)
+- State: inSellPosition[1] = true
+- Action: closeSellCondition = true (SuperTrend reversal)
+- Action: upTrend with all conditions met for buy
+- Currently: currentlyInSell = true and not true = false (closing)
+- isFlat = not false and not false and ... = true
+- Result: ✓ Initial Buy signal CAN trigger on same bar
+
+## Implementation Details:
+- Lines 76-77: Check if currently in position based on previous bar state
+- Line 80: Check if flat (not in buy, not in sell, not awaiting confirmation)
+- Lines 90, 92: Initial signals only trigger when isFlat = true
+
+This ensures no signal generation when:
+1. Currently in a buy or sell position
+2. Awaiting confirmation for a position
+3. Transitioning from one position to another (unless legitimately closing and opening)

@@ -71,10 +71,13 @@ trendChangedToDowntrend = upTrend[1] and not upTrend
 closeBuyCondition = (trendChangedToDowntrend or (close < buyEntryLow[1] and not na(buyEntryLow[1]))) and inBuyPosition[1]
 closeSellCondition = (trendChangedToUptrend or (close > sellEntryHigh[1] and not na(sellEntryHigh[1]))) and inSellPosition[1]
 
-// Initial Signal Conditions - allow same candle as close to generate new initial signal
-// Check if we're currently in a position AFTER accounting for closes on this bar
+// Position State Checking - Updated to check current bar state accurately
+// Check if we're in a position based on previous bar state and current bar closes
 currentlyInBuy = inBuyPosition[1] and not closeBuyCondition
 currentlyInSell = inSellPosition[1] and not closeSellCondition
+
+// Check if we're flat (no open position) and not awaiting confirmation
+isFlat = not currentlyInBuy and not currentlyInSell and not awaitingBuyConfirmation[1] and not awaitingSellConfirmation[1]
 
 // Debug: Check each condition separately
 buyConditionCheck1 = upTrend
@@ -82,23 +85,21 @@ buyConditionCheck2 = volAboveEma
 buyConditionCheck3 = greenCandle
 buyConditionCheck4 = aboveEMAHigh
 buyConditionCheck5 = not isDoji
-buyConditionCheck6 = not currentlyInBuy
-buyConditionCheck7 = not currentlyInSell
+buyConditionCheck6 = isFlat
 
-initialBuyCondition = buyConditionCheck1 and buyConditionCheck2 and buyConditionCheck3 and buyConditionCheck4 and buyConditionCheck5 and buyConditionCheck6 and buyConditionCheck7
+initialBuyCondition = buyConditionCheck1 and buyConditionCheck2 and buyConditionCheck3 and buyConditionCheck4 and buyConditionCheck5 and buyConditionCheck6
 
-initialSellCondition = downTrend and volAboveEma and redCandle and belowEMALow and not isDoji and not currentlyInBuy and not currentlyInSell
+initialSellCondition = downTrend and volAboveEma and redCandle and belowEMALow and not isDoji and isFlat
 
 // Debug labels - show why IB didn't trigger
 if closeSellCondition and not initialBuyCondition
-    debugText = "Missing: " + 
+    debugText = "Missing: " +
          (not buyConditionCheck1 ? "Trend " : "") +
          (not buyConditionCheck2 ? "Vol " : "") +
          (not buyConditionCheck3 ? "Green " : "") +
          (not buyConditionCheck4 ? "AbvEMA " : "") +
          (not buyConditionCheck5 ? "Doji! " : "") +
-         (not buyConditionCheck6 ? "InBuy " : "") +
-         (not buyConditionCheck7 ? "InSell " : "")
+         (not buyConditionCheck6 ? "!Flat " : "")
     // label.new(bar_index, high, debugText, style=label.style_label_down, color=color.yellow, textcolor=color.black, size=size.small)
 
 // Confirmation Logic
